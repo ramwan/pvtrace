@@ -1,4 +1,4 @@
-__version__ = "2.1.5"
+__version__ = "2.1.6"
 """
 Optical ray tracing for luminescent materials and spectral converter photovoltaic devices
 """
@@ -20,6 +20,7 @@ from .algorithm import photon_tracer
 from .data import lumogen_f_red_305, fluro_red
 
 from .device.lsc import LSC
+from .device.customlsc import CustomLSC
 
 # geometry
 from .geometry.box import Box
@@ -44,7 +45,7 @@ from .material.surface import (
     NullSurfaceDelegate,
     FresnelSurfaceDelegate,
 )
-from .material.utils import isotropic, henyey_greenstein, cone
+from .material.utils import isotropic, henyey_greenstein, cone, lambertian
 
 # scene
 from .scene.node import Node

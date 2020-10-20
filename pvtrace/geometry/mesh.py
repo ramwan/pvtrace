@@ -71,16 +71,19 @@ class Mesh(Geometry):
             raise GeometryError(
                 "Mesh must have a single closest point to calculate normal."
             )
-        if not np.any(np.absolute(distances) < EPS_ZERO):
-            raise GeometryError(
-                "Point is not on surface.",
-                {
-                    "point": surface_point,
-                    "geometry": self,
-                    "distances": distances,
-                    "threshold": EPS_ZERO,
-                },
-            )
+        # Commenting this out right now as the EPS_ZERO limitation
+        # depends on the fineness of our meshing.
+        #
+        # if not np.any(np.absolute(distances) < EPS_ZERO):
+        #     raise GeometryError(
+        #         "Point is not on surface.",
+        #         {
+        #             "point": surface_point,
+        #             "geometry": self,
+        #             "distances": distances,
+        #             "threshold": EPS_ZERO,
+        #         },
+        #     )
         normal = tuple(mesh.face_normals[triangle_id[0]])
         return normal
 

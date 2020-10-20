@@ -40,6 +40,7 @@ tower = Node(
 )
 tower.translate((0,0,4))
 
+
 light = Node(
     name="Light (555nm)",
     light=Light(direction=functools.partial(cone, np.pi/8)),
