@@ -86,14 +86,13 @@ class AirGapMirror(FresnelSurfaceDelegate):
             return tuple(lambertian().tolist())
 
 
-class LSC(object):
+class LSC():
     """Abstraction of a luminescent solar concentrator.
     
        This is intended to be a high-level API to easy use.
     """
 
     def __init__(self, size, wavelength_range=None, n0=1.0, n1=1.5):
-        super(LSC, self).__init__()
         if wavelength_range is None:
             self.wavelength_range = np.arange(400, 800)
 
