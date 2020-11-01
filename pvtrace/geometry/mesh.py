@@ -13,7 +13,6 @@ class Mesh(Geometry):
     """
 
     def __init__(self, trimesh, material=None):
-        super(Mesh, self).__init__()
         trimesh.vertices -= trimesh.center_mass
         self.trimesh = trimesh
         self._material = material

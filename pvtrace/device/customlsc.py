@@ -8,7 +8,7 @@ from pvtrace.scene.scene import Scene
 from pvtrace.geometry.box import Box
 from pvtrace.geometry.mesh import Mesh
 from pvtrace.geometry.sphere import Sphere
-from pvtrace.geometry.utils import EPS_ZERO
+from pvtrace.geometry.utils import EPS_ZERO, close_to_zero
 from pvtrace.data import lumogen_f_red_305, fluro_red
 from pvtrace.scene.renderer import MeshcatRenderer
 from pvtrace.material.surface import Surface, FresnelSurfaceDelegate
@@ -20,11 +20,42 @@ import pandas as pd
 import functools
 import time
 
+class CountableFaces():
+  def __init__(self, counter_faces, id_to_face):
+    self._RED = "#FF0000"
+    self._red = "#ff0000"
+
+    self.faces_to_id = {} # {(v1, v2, v3): id}
+    self.id_to_face = {} # {id: (v1, v2, v3)}
+    self.counter_faces = {} # {id: count}
+    
+    if id_to_face is not None:
+      self.id_to_face = id_to_face
+
+      for (key, v) in id_to_face.items():
+        self.faces_to_id[v] = key
+    
+    if counter_faces is not None and id_to_face is not None:
+        for (face, colour) in counter_faces:
+            if colour == self._RED or colour == self._red:
+              self.counter_faces[ self.faces_to_id[face] ] = 0
+
+  def incrementById(self, fid):
+    if fid in self.counter_faces:
+      self.counter_faces[fid] += 1
+
+  def totalCounted(self):
+    s = 0
+    for (key, value) in self.counter_faces:
+      s += value
+    return s
+
 # This will probably implement a slightly different interface compared to
 # the regular LSC class due to different geometry requirements.
 class CustomLSC():
   def __init__(self, mesh, bounding_box,
-               wavelength_range=None, n0=1.0, n1=1.5):
+               wavelength_range=None, n0=1.0, n1=1.5,
+               counter_faces=None, faces_dict=None):
     if wavelength_range is None:
       self.wavelength_range = np.arange(400, 800)
     if bounding_box is None:
@@ -34,8 +65,9 @@ class CustomLSC():
     self.bounding_box = bounding_box # 3-tuple of values (l, w, d)
     self.n0 = n0
     self.n1 = n1
+    self.counter_faces = CountableFaces(counter_faces, faces_dict)
 
-    self._solar_cell_surfaces = set()
+    self._numsims = 0
     self._scene = None
     self._renderer = None
     self._store = None
@@ -233,11 +265,6 @@ class CustomLSC():
       "position": position,
     })
 
-  def add_solar_cell(self, facets):
-    # this functionality is... undefined as it is geometry dependent
-    # and we have no clear idea of "left", "right", "up", etc.
-    pass
-
   def show(
     self,
     wireframe=True,
@@ -283,20 +310,40 @@ class CustomLSC():
 
     # `simulate` can be called many times to append more rays
     if self._store is None:
-      store = {"entrance_rays": [], "exit_rays": []}
+      store = {"entrance_rays": [], "exit_rays": [],
+               "emit_one": 0, "emit_two": 0,
+               "emit_three": 0, "emit_four_plus": 0}
 
     vis = self._renderer
     count = 0
     for ray in scene.emit(n):
+      self._numsims += 1
       history = photon_tracer.follow(scene, ray, emit_method=emit_method)
       rays, events = zip(*history)
       store["entrance_rays"].append((rays[1], events[1]))
+
+      reemission_count = events.count(Event.EMIT)
+      if reemission_count == 1:
+        store["emit_one"] += 1
+      elif reemission_count == 2:
+        store["emit_two"] += 1
+      elif reemission_count == 3:
+        store["emit_three"] += 1
+      elif reemission_count >3:
+        store["emit_four_plus"] += 1
+
       if events[-1] in (Event.ABSORB, Event.KILL):
         # final event is a lost store path information at final event
         store["exit_rays"].append((rays[-1], events[-1]))
       elif events[-1] == Event.EXIT:
         # final event hits the world node. store path information at
         # penultimate location
+
+        # if we've hit a surface, increment a counter if need be
+        _, dist, [tid] = self.mesh.nearest.on_surface(np.array([rays[-2].position]))
+        if close_to_zero(dist):
+            self.counter_faces.incrementById(tid)
+
         store["exit_rays"].append((rays[-2], events[-2]))
 
       # Update visualiser
@@ -350,10 +397,6 @@ class CustomLSC():
     df["{}_z".format(column)] = coords[:, 2]
     df.drop(columns=column, inplace=True)
     return df
-
-  def label_facets(self, df, length, width, height):
-    """ Label rows with facet names for a box LSC. """
-    pass
 
   # facets isn't well defined for us here...
   def spectrum(self, kind="last", source="all", events=None):
@@ -432,20 +475,30 @@ class CustomLSC():
     waveguide_efficiency = 0
     # nonradiative_loss = lost / incident
     nonradiative_loss = 0
+    total_reemitted = self._store["emit_one"] + self._store["emit_two"] + \
+                      self._store["emit_three"] + \
+                      self._store["emit_four_plus"]
 
     Cg = 0 # TODO: geometric concentration
 
     s = pd.Series(
       {
-        "Optical Efficiency": optical_efficiency,
-        "Waveguide Efficiency": waveguide_efficiency,
-        "Waveguide Efficiency (Thermodynamic Prediction": "invalid",
-        "Non-radiative Loss (fraction)": nonradiative_loss,
-        "Geometric Concentration": "invalid (for now)",
+        #"Optical Efficiency": optical_efficiency,
+        #"Waveguide Efficiency": waveguide_efficiency,
+        #"Waveguide Efficiency (Thermodynamic Prediction": "invalid",
+        #"Non-radiative Loss (fraction)": nonradiative_loss,
+        #"Geometric Concentration": "invalid (for now)",
         "Refractive Index": self.n1,
-        "Cell Surfaces": "invalid (for now)",
+        #"Cell Surfaces": "invalid (for now)",
         "Components": self.component_names(),
         "Lights": self.light_names(),
+        "Re-emitted once": str(self._store["emit_one"]),
+        "Re-emitted twice": str(self._store["emit_two"]),
+        "Re-emitted three times": str(self._store["emit_three"]),
+        "Re-emitted four plus": str(self._store["emit_four_plus"]),
+        "Total rays re-emitted": str(total_reemitted) + " / " \
+                                 + str(self._numsims),
+        "Total counted at faces": str(self.counter_faces.totalCounted())
       })
     return s
 
@@ -453,9 +506,9 @@ class CustomLSC():
     print()
     print("Simulation Report")
     print("-----------------")
-    print()
-    print("Surface Counts:")
-    print(self.counts())
+    #print()
+    #print("Surface Counts:")
+    #print(self.counts())
     print()
     print("Summary:")
     print(self.summary())

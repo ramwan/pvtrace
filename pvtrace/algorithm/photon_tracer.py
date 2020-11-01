@@ -162,12 +162,14 @@ def follow(scene, ray, maxsteps=1000, maxpathlength=np.inf, emit_method="kT"):
         if info is None:
             break
 
+        # we find out how far the ray would go if there is no absorption
         hit, (container, adjacent), point, full_distance = info
         if hit is scene.root:
             history.append((ray.propagate(full_distance), Event.EXIT))
             break
 
         material = container.geometry.material
+        # then we check for absorption here
         absorbed, at_distance = material.is_absorbed(ray, full_distance)
         if absorbed:
             ray = ray.propagate(at_distance)
@@ -189,6 +191,7 @@ def follow(scene, ray, maxsteps=1000, maxpathlength=np.inf, emit_method="kT"):
         else:
             ray = ray.propagate(full_distance)
             surface = hit.geometry.material.surface
+
             ray = ray.representation(scene.root, hit)
             if surface.is_reflected(ray, hit.geometry, container, adjacent):
                 ray = surface.reflect(ray, hit.geometry, container, adjacent)
