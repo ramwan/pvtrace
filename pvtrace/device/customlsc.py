@@ -20,35 +20,13 @@ import pandas as pd
 import functools
 import time
 
-class CountableFaces():
-  def __init__(self, counter_faces, id_to_face):
-    self._RED = "#FF0000"
-    self._red = "#ff0000"
-
-    self.faces_to_id = {} # {(v1, v2, v3): id}
-    self.id_to_face = {} # {id: (v1, v2, v3)}
-    self.counter_faces = {} # {id: count}
-    
-    if id_to_face is not None:
-      self.id_to_face = id_to_face
-
-      for (key, v) in id_to_face.items():
-        self.faces_to_id[v] = key
-    
-    if counter_faces is not None and id_to_face is not None:
-        for (face, colour) in counter_faces:
-            if colour == self._RED or colour == self._red:
-              self.counter_faces[ self.faces_to_id[face] ] = 0
-
-  def incrementById(self, fid):
-    if fid in self.counter_faces:
-      self.counter_faces[fid] += 1
-
-  def totalCounted(self):
-    s = 0
-    for (key, value) in self.counter_faces:
-      s += value
-    return s
+# values: tuple of at least 3 integers representing RGB values
+#         tuple can be RGBA but the A will be ignored.
+def _isRed(values):
+  if values[0] == 255 and values[1] == 0 and values[2] == 0:
+    return True
+  else:
+    return False
 
 # This will probably implement a slightly different interface compared to
 # the regular LSC class due to different geometry requirements.
@@ -65,7 +43,7 @@ class CustomLSC():
     self.bounding_box = bounding_box # 3-tuple of values (l, w, d)
     self.n0 = n0
     self.n1 = n1
-    self.counter_faces = CountableFaces(counter_faces, faces_dict)
+    self.exit_region_counts = {}
 
     self._numsims = 0
     self._scene = None
@@ -265,6 +243,9 @@ class CustomLSC():
       "position": position,
     })
 
+  def delete_all_lights(self):
+    self._user_lights.clear()
+
   def show(
     self,
     wireframe=True,
@@ -316,8 +297,15 @@ class CustomLSC():
 
     vis = self._renderer
     count = 0
+
     for ray in scene.emit(n):
       self._numsims += 1
+
+      if self._numsims % 500 == 0:
+        print("Simulated " + str(self._numsims) + " rays.")
+
+      #TODO: we can differentiate between light sources via
+      #      Event.GENERATE
       history = photon_tracer.follow(scene, ray, emit_method=emit_method)
       rays, events = zip(*history)
       store["entrance_rays"].append((rays[1], events[1]))
@@ -339,10 +327,15 @@ class CustomLSC():
         # final event hits the world node. store path information at
         # penultimate location
 
-        # if we've hit a surface, increment a counter if need be
+        # if we've hit a surface, increment a counter if need be.
+        # NOTE: this does not include rays that are totally internally
+        # reflected from the solar cell boundary.
         _, dist, [tid] = self.mesh.nearest.on_surface(np.array([rays[-2].position]))
-        if close_to_zero(dist):
-            self.counter_faces.incrementById(tid)
+        if _isRed(self.mesh.visual.face_colors[tid]):
+          if tid in self.exit_region_counts:
+            self.exit_region_counts[tid] += 1
+          else:
+            self.exit_region_counts[tid] = 1
 
         store["exit_rays"].append((rays[-2], events[-2]))
 
@@ -475,9 +468,12 @@ class CustomLSC():
     waveguide_efficiency = 0
     # nonradiative_loss = lost / incident
     nonradiative_loss = 0
-    total_reemitted = self._store["emit_one"] + self._store["emit_two"] + \
-                      self._store["emit_three"] + \
-                      self._store["emit_four_plus"]
+    # total_reemitted = self._store["emit_one"] + self._store["emit_two"] + \
+    #                   self._store["emit_three"] + \
+    #                   self._store["emit_four_plus"]
+    total_relevant = 0
+    for k, v in self.exit_region_counts.items():
+      total_relevant += v
 
     Cg = 0 # TODO: geometric concentration
 
@@ -488,29 +484,30 @@ class CustomLSC():
         #"Waveguide Efficiency (Thermodynamic Prediction": "invalid",
         #"Non-radiative Loss (fraction)": nonradiative_loss,
         #"Geometric Concentration": "invalid (for now)",
-        "Refractive Index": self.n1,
+        #"Refractive Index": self.n1,
         #"Cell Surfaces": "invalid (for now)",
-        "Components": self.component_names(),
-        "Lights": self.light_names(),
-        "Re-emitted once": str(self._store["emit_one"]),
-        "Re-emitted twice": str(self._store["emit_two"]),
-        "Re-emitted three times": str(self._store["emit_three"]),
-        "Re-emitted four plus": str(self._store["emit_four_plus"]),
-        "Total rays re-emitted": str(total_reemitted) + " / " \
+        #"Components": self.component_names(),
+        #"Lights": self.light_names(),
+        # "Re-emitted once": str(self._store["emit_one"]),
+        # "Re-emitted twice": str(self._store["emit_two"]),
+        # "Re-emitted three times": str(self._store["emit_three"]),
+        # "Re-emitted four plus": str(self._store["emit_four_plus"]),
+        # "Total rays re-emitted": str(total_reemitted) + " / " \
+        #                          + str(self._numsims),
+        "Total exited at relevant faces": str(total_relevant) + " / " \
                                  + str(self._numsims),
-        "Total counted at faces": str(self.counter_faces.totalCounted())
       })
     return s
 
   def report(self):
-    print()
-    print("Simulation Report")
-    print("-----------------")
+    #print()
+    #print("Simulation Report")
+    #print("-----------------")
     #print()
     #print("Surface Counts:")
     #print(self.counts())
-    print()
-    print("Summary:")
+    #print()
+    #print("Summary:")
     print(self.summary())
 
 
