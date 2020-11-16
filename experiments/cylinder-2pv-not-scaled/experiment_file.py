@@ -98,7 +98,7 @@ for z in range(z_points):
 '''
 
 #custom_lsc.show(open_browser=True, max_history=rays_per_light*num_lights*10)
-custom_lsc.show(open_browser=False, max_history=1)
+#custom_lsc.show(open_browser=False, max_history=1)
 
 # when we simulate, we cycle through the lights so we want to emit
 # num_lights * rays_per_light times

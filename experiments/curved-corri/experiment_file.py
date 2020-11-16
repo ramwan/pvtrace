@@ -47,7 +47,7 @@ HOW TO USE THIS SO FAR:
 '''
 
 num_lights = 0 # value will be updated, leave it at 0
-rays_per_light = 1 # recommended to use at least 10000 for statistical accuracy
+rays_per_light = 10000 # recommended to use at least 10000 for statistical accuracy
 x_points = 60 # min: 1
 y_points = 1 # min: 1
 x_start = 0
