@@ -1,0 +1,23 @@
+#!/bin/tcsh
+#PBS -P zu57
+#PBS -l walltime=3:00:00
+#PBS -q normal
+#PBS -l mem=16GB
+#PBS -l jobfs=5GB
+#PBS -l ncpus=1
+#PBS -o results.out
+#PBS -e results.err
+#PBS -N "20mm Radius - 1 Corner Strip & Both Edge PV Cells"
+#PBS -M raymond.wan1@student.unsw.edu.au
+#PBS -m e
+
+#PBS -l software=my_program
+#PBS -l wd
+
+module load python3/3.7.4
+module load intel-mkl/2019.3.199
+
+set cmd="python3 experiment_file.py"
+echo $cmd
+
+$cmd

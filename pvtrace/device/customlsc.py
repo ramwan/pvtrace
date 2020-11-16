@@ -19,11 +19,18 @@ import numpy as np
 import pandas as pd
 import functools
 import time
+import re
 
 # values: tuple of at least 3 integers representing RGB values
 #         tuple can be RGBA but the A will be ignored.
 def _isRed(values):
   if values[0] == 255 and values[1] == 0 and values[2] == 0:
+    return True
+  else:
+    return False
+
+def _isBlue(values):
+  if values[0] == 0 and values[1] == 0 and values[2] == 255:
     return True
   else:
     return False
@@ -43,7 +50,6 @@ class CustomLSC():
     self.bounding_box = bounding_box # 3-tuple of values (l, w, d)
     self.n0 = n0
     self.n1 = n1
-    self.exit_region_counts = {}
 
     self._numsims = 0
     self._scene = None
@@ -125,7 +131,6 @@ class CustomLSC():
           surface=Surface())
       ),
       parent=world)
-    #lsc.translate((0, 0, 2)) # TODO temp
 
     if len(self._user_lights) == 0:
       self._user_lights = self._make_default_lights()
@@ -144,46 +149,6 @@ class CustomLSC():
 
     self._scene = Scene(world)
 
-  def _make_dataframe(self):
-    df = pd.DataFrame()
-
-    # rays entering the scene
-    for ray, event in self._store["entrance_rays"]:
-      rep = asdict(ray)
-      rep["kind"] = "entrance"
-      rep["event"] = event.name.lower()
-      df = df.append(rep, ignore_index=True)
-
-    # rays exiting the scene
-    for ray, event in self._store["exit_rays"]:
-      rep = asdict(ray)
-      rep["kind"] = "exit"
-      rep["event"] = event.name.lower()
-      df = df.append(rep, ignore_index=True)
-
-    self._df = df
-    return df
-
-  def _make_counts(self, df):
-    if self._counts is not None:
-      return self._counts
-
-    # a bunch of facet related things here which I will placeholder
-    # to nothing
-    components = self._scene.component_nodes
-    lights = self._scene.light_nodes
-    all_components = {component.name for component in components}
-    all_lights = {light.name for light in lights}
-
-    self._counts = pd.DataFrame({
-        "Solar In": pd.Series({}),
-        "Solar Out": pd.Series({}),
-        "Luminescent Out": pd.Series({}),
-        "Luminescent In": pd.Series({})
-      }, index=[])
-
-    return self._counts
-
   # get the names of the components,
   # throw an error if they haven't been created yet
   def component_names(self):
@@ -195,8 +160,13 @@ class CustomLSC():
   # throw an error if they haven't been created yet
   def light_names(self):
     if self._scene is None:
-      raise ValueError("Run a simulation before callign this method.")
+      raise ValueError("Run a simulation before calling this method.")
     return {l["name"] for l in self._user_lights}
+
+  def light_names_ordered(self):
+    if self._scene is None:
+      raise ValueError("Run a simulation before calling this method.")
+    return [l["name"] for l in self._user_lights]
 
   def add_luminophore(
     self, name, coefficient, emission, quantum_yield, phase_function=None
@@ -243,9 +213,6 @@ class CustomLSC():
       "position": position,
     })
 
-  def delete_all_lights(self):
-    self._user_lights.clear()
-
   def show(
     self,
     wireframe=True,
@@ -284,45 +251,58 @@ class CustomLSC():
     time.sleep(1.0)
     return self._renderer
 
-  def simulate(self, n, progress=None, emit_method="kT"):
+  def simulate(self, n, progress=None, emit_method="kT", update_vis=True):
+    numlights = len(self._user_lights)
+    vis = self._renderer
+    count = 0
+
     if self._scene is None:
       self._make_scene()
     scene = self._scene
 
     # `simulate` can be called many times to append more rays
     if self._store is None:
-      store = {"entrance_rays": [], "exit_rays": [],
-               "emit_one": 0, "emit_two": 0,
-               "emit_three": 0, "emit_four_plus": 0}
+      store = []
+      for i in range( numlights ):
+        store.append({"entrance_rays": [], "exit_rays": [],
+                      "emit_one": 0, "emit_two": 0,
+                      "emit_three": 0, "emit_four_plus": 0,
+                      "PVcell_count": {}
+                    })
 
-    vis = self._renderer
-    count = 0
-
+    # we're going to emit sequentially because my brain doesn't have time
+    # to figure out how to parallelise this and make it fit with the
+    # framework which has been written for sequential processing.
+    #
+    # plus it'd probably take me longer to parallelise it than to just wait.
+    i = 0
     for ray in scene.emit(n):
+      cur_light = i % numlights
       self._numsims += 1
 
       if self._numsims % 500 == 0:
-        print("Simulated " + str(self._numsims) + " rays.")
+        print("Simulated: " + str(self._numsims) + "/" + str(n))
 
-      #TODO: we can differentiate between light sources via
-      #      Event.GENERATE
-      history = photon_tracer.follow(scene, ray, emit_method=emit_method)
+      history = photon_tracer.follow(\
+                  scene, ray, maxsteps=10000, emit_method=emit_method)
       rays, events = zip(*history)
-      store["entrance_rays"].append((rays[1], events[1]))
+      # do we really need to track entrances?
+      # store[cur_light]["entrance_rays"].append((rays[1], events[1]))
 
       reemission_count = events.count(Event.EMIT)
       if reemission_count == 1:
-        store["emit_one"] += 1
+        store[cur_light]["emit_one"] += 1
       elif reemission_count == 2:
-        store["emit_two"] += 1
+        store[cur_light]["emit_two"] += 1
       elif reemission_count == 3:
-        store["emit_three"] += 1
+        store[cur_light]["emit_three"] += 1
       elif reemission_count >3:
-        store["emit_four_plus"] += 1
+        store[cur_light]["emit_four_plus"] += 1
 
       if events[-1] in (Event.ABSORB, Event.KILL):
+        pass
         # final event is a lost store path information at final event
-        store["exit_rays"].append((rays[-1], events[-1]))
+        #store[cur_light]["exit_rays"].append((rays[-1], events[-1]))
       elif events[-1] == Event.EXIT:
         # final event hits the world node. store path information at
         # penultimate location
@@ -332,15 +312,17 @@ class CustomLSC():
         # reflected from the solar cell boundary.
         _, dist, [tid] = self.mesh.nearest.on_surface(np.array([rays[-2].position]))
         if _isRed(self.mesh.visual.face_colors[tid]):
-          if tid in self.exit_region_counts:
-            self.exit_region_counts[tid] += 1
+          if tid in store[cur_light]["PVcell_count"]:
+            store[cur_light]["PVcell_count"][tid] += 1
           else:
-            self.exit_region_counts[tid] = 1
+            store[cur_light]["PVcell_count"][tid] = 1
 
-        store["exit_rays"].append((rays[-2], events[-2]))
+        # do we really need to track entrances and exits?
+        # store[cur_light]["exit_rays"].append((rays[-2], events[-2]))
 
-      # Update visualiser
-      if vis:
+      # Update visualiser - but we won't want to do this for large
+      # numbers of rays
+      if vis and update_vis:
         vis.add_history(history, **self._add_history_kwargs)
 
       # progress callback
@@ -348,48 +330,12 @@ class CustomLSC():
         count += 1
         progress(count)
 
+      i += 1
+    # end for loop
+
     self._store = store
     print("Tracing finished.")
     print("Preparing results.")
-    df = self._make_dataframe()
-    df = self.expand_coords(df, "direction")
-    df = self.expand_coords(df, "position")
-    self._df = df
-
-  # does this actually make sense in our situation?
-  def expand_coords(self, df, column):
-    """
-    Returns a dataframe with coordinate column expanded into components.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        The dataframe
-    column : str
-        The column label
-
-    Returns
-    -------
-    df : pands.DataFrame
-        The dataframe with the column expanded.
-
-    Example
-    -------
-    Given the dataframe:
-
-      df = pd.DataFrame({'position': [(1, 2, 3)]})
-
-    the function will return a new dataframe:
-
-      edf = expand_coords(df, 'position')
-      edf == pd.DataFrame({'position_x': [1], 'position_y': [2], 'position_z': [3]})
-    """
-    coords = np.stack(df[column].values)
-    df["{}_x".format(column)] = coords[:, 0]
-    df["{}_y".format(column)] = coords[:, 1]
-    df["{}_z".format(column)] = coords[:, 2]
-    df.drop(columns=column, inplace=True)
-    return df
 
   # facets isn't well defined for us here...
   def spectrum(self, kind="last", source="all", events=None):
@@ -443,25 +389,14 @@ class CustomLSC():
 
     return df.loc[want_kind & want_source & want_events]["wavelength"]
 
-  def counts(self):
-    df = self._df
-    if df is None:
-      df = self._make_dataframe()
-      df = self.expand_coords(df, "direction")
-      df = self.expand_coords(df, "position")
-    counts = self._make_counts(df)
-    return counts
-
   # A bunch of things are invalid, due to undetermined geometry
   # representations for now
   def summary(self):
-    counts = self._make_counts(self._df)
     lum_collected = 0
     lum_escaped = 0
     incident = 0
-    # abunch of things dealing with facets...
 
-    lost = self.spectrum(source="all", events={"absorb"}, kind="last").shape[0]
+    # lost = self.spectrum(source="all", events={"absorb"}, kind="last").shape[0]
     # optical_efficiency = lum_collected / incident
     optical_efficiency = 0
     # waveguide_efficiency = lum_collected / (lum_collected + lum_escaped)
@@ -472,44 +407,34 @@ class CustomLSC():
     #                   self._store["emit_three"] + \
     #                   self._store["emit_four_plus"]
     total_relevant = 0
-    for k, v in self.exit_region_counts.items():
-      total_relevant += v
 
     Cg = 0 # TODO: geometric concentration
 
-    s = pd.Series(
-      {
-        #"Optical Efficiency": optical_efficiency,
-        #"Waveguide Efficiency": waveguide_efficiency,
-        #"Waveguide Efficiency (Thermodynamic Prediction": "invalid",
-        #"Non-radiative Loss (fraction)": nonradiative_loss,
-        #"Geometric Concentration": "invalid (for now)",
-        #"Refractive Index": self.n1,
-        #"Cell Surfaces": "invalid (for now)",
-        #"Components": self.component_names(),
-        #"Lights": self.light_names(),
-        # "Re-emitted once": str(self._store["emit_one"]),
-        # "Re-emitted twice": str(self._store["emit_two"]),
-        # "Re-emitted three times": str(self._store["emit_three"]),
-        # "Re-emitted four plus": str(self._store["emit_four_plus"]),
-        # "Total rays re-emitted": str(total_reemitted) + " / " \
-        #                          + str(self._numsims),
-        "Total exited at relevant faces": str(total_relevant) + " / " \
-                                 + str(self._numsims),
-      })
-    return s
+    series = {}
+    names = self.light_names_ordered()
 
-  def report(self):
-    #print()
-    #print("Simulation Report")
-    #print("-----------------")
-    #print()
-    #print("Surface Counts:")
-    #print(self.counts())
-    #print()
-    #print("Summary:")
-    print(self.summary())
+    print("{:28}, {}, {}, {}, {}, {}".format(\
+          'Location', 'Re-emit 1x', 'Re-emit 2x',\
+          'Re-emit 3x', 'Re-emit 4x+', 'PV-cell count'))
+    format_s = "({:08.4f} {:08.4f} {:08.4f}), {:10d}, {:10d}, {:10d}, " +\
+               "{:11d}, {:13d}"
 
+    for i in range( len(self._store) ):
+      t = 0
+      for key in self._store[i]["PVcell_count"]:
+        t += self._store[i]["PVcell_count"][key]
+
+      total_relevant += t
+      print(format_s.format(\
+            *(float(re.sub(r'[^0-9\.]', '', n)) for n in names[i].split(', ')),
+            self._store[i]["emit_one"],
+            self._store[i]["emit_two"], self._store[i]["emit_three"],
+            self._store[i]["emit_four_plus"], t
+          ))
+
+    print()
+    print("Total counted at PV cell faces: " + str(total_relevant))
+    print("Total rays emited: " + str(self._numsims))
 
 
 if __name__ == "__main__":

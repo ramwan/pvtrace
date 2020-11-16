@@ -117,4 +117,7 @@ dmypy.json
 
 # STL files
 STL-geometry
+PLY-geometry
+3MF-geometry
+spectra-data
 
