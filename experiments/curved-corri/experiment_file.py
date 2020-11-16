@@ -10,7 +10,7 @@ import re
 name = "Curved-Corri"
 
 lscmesh = trimesh.load(
-      "./"+name+".3MF",
+      "./"+name+".3mf",
       file_type='3mf',
       force='mesh')
 
@@ -47,7 +47,7 @@ HOW TO USE THIS SO FAR:
 '''
 
 num_lights = 0 # value will be updated, leave it at 0
-rays_per_light = 10000 # recommended to use at least 10000 for statistical accuracy
+rays_per_light = 1 # recommended to use at least 10000 for statistical accuracy
 x_points = 60 # min: 1
 y_points = 1 # min: 1
 x_start = 0
@@ -97,7 +97,7 @@ for z in range(z_points):
 '''
 
 #custom_lsc.show(open_browser=True, max_history=rays_per_light*num_lights*10)
-custom_lsc.show(open_browser=False, max_history=1)
+#custom_lsc.show(open_browser=False, max_history=1)
 
 # when we simulate, we cycle through the lights so we want to emit
 # num_lights * rays_per_light times
