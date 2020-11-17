@@ -1,0 +1,14 @@
+python experiment_file.py
+
+======================================================================================
+                  Resource Usage on 2020-11-17 23:29:45:
+   Job Id:             13580184.gadi-pbs
+   Project:            zu57
+   Exit Status:        271 (Linux Signal 15 SIGTERM Termination)
+   Service Units:      24.35
+   NCPUs Requested:    1                      NCPUs Used: 1               
+                                           CPU Time Used: 02:01:37                                   
+   Memory Requested:   24.0GB                Memory Used: 96.22MB         
+   Walltime requested: 05:00:00            Walltime Used: 02:01:45        
+   JobFS requested:    3.0GB                  JobFS used: 0B              
+======================================================================================

@@ -10,7 +10,7 @@ import re
 name = "Trapeze-Corri"
 
 lscmesh = trimesh.load(
-      "./"+name+".3MF",
+      "./"+name+".3mf",
       file_type='3mf',
       force='mesh')
 
