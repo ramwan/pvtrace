@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N 20mmRad3corner2edge
+#PBS -P zu57
+#PBS -l walltime=5:00:00
+#PBS -q normal
+#PBS -l mem=24GB
+#PBS -l jobfs=3GB
+#PBS -l ncpus=1
+#PBS -o results.out
+#PBS -e results.err
+#PBS -M raymond.wan1@student.unsw.edu.au
+#PBS -m e
+#PBS -l wd
+
+module load python3/3.7.4
+source ~/pvtrace-env/bin/activate
+export LD_LIBRARY_PATH=/home/561/rw6126/libspatialindex/lib:$LD_LIBRARY_PATH
+
+cmd="python experiment_file.py"
+echo $cmd
+
+$cmd
