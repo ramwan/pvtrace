@@ -7,7 +7,7 @@ import functools
 import re
 
 #name = "30mm-Radius-Corner"
-name = "Curved-Corri"
+name = "Trapeze-Corri"
 
 lscmesh = trimesh.load(
       "./"+name+".3mf",
@@ -47,10 +47,10 @@ HOW TO USE THIS SO FAR:
 '''
 
 num_lights = 0 # value will be updated, leave it at 0
-rays_per_light = 1000 # recommended to use at least 10000 for statistical accuracy
+rays_per_light = 47 # recommended to use at least 10000 for statistical accuracy
 x_points = 1 # min: 1
 y_points = 1 # min: 1
-x_start = -extents[0] * 3.5
+x_start = -extents[0] * 1.7
 x_step = 0
 y_start = 0
 y_step = 0
@@ -80,8 +80,8 @@ Uncomment below when you want to use it and comment the above out.
 '''
 
 z_points = 60
-z_start = -extents[2] * 0.005
-z_step = (extents[2] * 0.07 - z_start) / z_points
+z_start = -extents[2] * 0.075
+z_step = (extents[2] * 0.035 - z_start) / z_points
 for z in range(z_points):
   for y in range(y_points):
     num_lights += 1
@@ -91,7 +91,7 @@ for z in range(z_points):
     custom_lsc.add_light(
       str(coords),
       coords,
-      rotation=(np.radians(90), (0, 1, 0)),
+      rotation=(np.radians(80), (0, 1, 0)),
       direction=functools.partial(cone, np.radians(0.001)),
       wavelength=None,
       position=None)
